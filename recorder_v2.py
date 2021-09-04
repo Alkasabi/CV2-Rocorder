@@ -1,43 +1,63 @@
 import cv2,time
+import os,glob
 import numpy as np
 import threading
 
 class recorder():
-    def __init__(self, i=0, out_filename="out.avi", snapinterval=0,w=0,h=0):
+    def __init__(self,i=0,out_filename="out.avi",snapinterval=-1,w=0,h=0):
         self.cv2=cv2
         self.source=i
-        self.width=w
-        self.height=h
+        self.source_type="camera"
+        self.width  = w
+        self.height = h
         self.rescaling=True
         self.out_filename=out_filename
         self.snapinterval=snapinterval
         self.recording="preview"
         self.snap_cnt=0
-        self.running=True
+        self.frame_cnt=0
+        self.current_dir=""
+        self.set_source_type()
         self.non_block()
 
+    def check_lidar_file(self):
+        for file in glob.iglob(os.path.join(self.current_dir, '*.jpg')):  
+            title, ext = os.path.splitext(os.path.basename(file))
+        pass
+
     def process(self,frame):
+
         return frame
+
+    def set_source_type(self):
+        if type(self.source) == "int":
+            self.source_type="camera"+ str(self.source) +"_"
+        else:
+            self.source_type="file_"+ str(self.source)
+
 
     def end(self):
         if self.recording=="recording":
             self.recording="end"
+        
 
     def pause(self):
         if self.recording=="paused":
             self.recording="recording"
         elif self.recording=="recording":
             self.recording="paused"
+        
 
-    def record(self):
-        if self.recording=="end" or self.recording=="preview":
+    def recored(self):
+        if self.recording=="saved" or self.recording=="preview" :
             self.recording="start"
+            print(self.recording)
+        
 
     def snap(self):
-        self.img_name=str(self.source)+"_"+str(self.snap_cnt)+'.jpg'
-        self.snap_cnt+=1
+        self.img_name="images/"+self.source_type+"_"+str(self.frame_cnt)+'.jpg'
+        #self.snap_cnt+=1
         self.cv2.imwrite(self.img_name, self.frame, [int(self.cv2.IMWRITE_JPEG_QUALITY), 90])
-        print("[INFO] A snap is saved for source:",str(self.source),". Snap saved to:",self.img_name)
         self.cv2.putText(self.frame, 'snap:'+self.img_name, self.pos, self.cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2, cv2.LINE_AA)
         self.cv2.waitKey(1)
         self.cv2.imshow('snap'+str(self.source),self.frame)
@@ -47,13 +67,6 @@ class recorder():
         #self.thead1.daemon = True
         self.thead1.start()
         pass
-
-    def quit(self):
-        self.cap.release()
-        self.cv2.destroyAllWindows()
-        if self.recording=="recording" or self.recording=="start" or self.recording=="paused":
-            self.out.release()
-        self.running = False
 
     def rescale(self):
         if self.rescaling:
@@ -68,24 +81,35 @@ class recorder():
             self.rescaling=False
         self.pos= ( int( self.width/10) ,int( self.height/10) )
 
+
         # Check if camera opened successfully
         if (self.cap.isOpened() == False): 
-            print("[ERROR] Unable to read camera feed from source:",str(self.source),"... thread is killed!")
-            self.quit()
+            print("Unable to read camera feed")
 
-        while(self.running):
+        while(True):
             ret, self.frame = self.cap.read()
-            self.frame= process(self.frame)
+
+            self.frame=self.process(self.frame)
+
             #self.cv2.waitKey(1)
             if ret == True: 
                 self.rescale()
+                self.frame_cnt+=1
+                self.snap_cnt+=1
+                if self.snapinterval > 0:
+                    if self.snap_cnt==self.snapinterval:
+                        self.snap()
+                        self.snap_cnt=0
+                elif self.snapinterval == 0:
+                    self.snap()
 
                 self.pre_frame=self.frame.copy()
 
+                self.cv2.putText(self.pre_frame, 'S /Snap - R/Record - E/End record - P/Pause', (0, self.height - 20), self.cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, 10)
+
                 if self.recording=="recording":
-                    self.out.write(self.frame)
+                    self.out.write(self.frame)  
                     self.cv2.putText(self.pre_frame, 'recording', self.pos, self.cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
-                    print("[INFO] Recording started for source:",str(self.source))
                 
                 elif self.recording=="preview":
                     self.cv2.putText(self.pre_frame, 'preview', self.pos, self.cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
@@ -105,7 +129,6 @@ class recorder():
                     self.cv2.imshow('frame'+str(self.source),self.pre_frame)
                     time.sleep(3)
                     self.out.release()
-                    print("[INFO] Recording has finished for source:",str(self.source),". File saved to:",self.out_filename)
 
                 self.cv2.imshow('frame'+str(self.source),self.pre_frame)
                 
@@ -114,30 +137,32 @@ class recorder():
                 self.cv2.imshow('frame'+str(self.source),self.pre_frame)
                 
                 time.sleep(3)
-                print("[ERROR] No frames returned for source:",str(self.source),".. closing...")
-                self.quit()
-            
-            # Press 'q' on keyboard to stop recording
+                break
+
+                pass
+               
+            # Press Q on keyboard to stop recording
             key=self.cv2.waitKey(1)
 
             if key == ord('q'):
                 # Closes all the frames
-                self.quit()
+                self.cap.release()
+                self.cv2.destroyAllWindows()
+                #self.out.release()
+                break
 
             elif key == ord('s'):
                 self.snap()
 
             elif key == ord('r'):
-                self.record()
-
+                self.recored()
             elif key == ord('e'):
                 self.end()
 
             elif key == ord('p'):
                 self.pause()
 
-rec=recorder(i="ParkingDemoVideo_01.mp4")
-rec1=recorder(i=0)
 
-
-
+if __name__=="__main__":
+    #rec=recorder(i="pass.mp4",snapinterval=15)
+    rec1=recorder(i=0)
